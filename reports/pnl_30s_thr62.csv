@@ -1,0 +1,3 @@
+day,bar,step_sec,trade_horizon_sec,n_train_days,gate,gate_q,gate_thresh,p_enter_long,p_enter_short,min_hold_sec,turnover,total_cost,total_pnl_net
+2024-01-02,30s,30,90,1,none,0.75,,0.62,0.38,180,198.0,0.1786570450434988,-0.13064033423018784
+2024-01-03,30s,30,90,2,none,0.75,,0.62,0.38,180,42.0,0.09111110900510816,-0.03466749153340615

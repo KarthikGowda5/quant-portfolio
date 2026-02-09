@@ -1,9 +1,23 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Data (do NOT commit)
 data/raw/
 data/processed/
 data/cache/
-reports/figures/
+
+# OS
 .DS_Store
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc

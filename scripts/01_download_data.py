@@ -12,6 +12,9 @@ import pandas as pd
 import requests
 import io
 import zipfile
+import argparse
+from datetime import date, datetime, timedelta
+
 
 
 
@@ -214,49 +217,78 @@ def try_download_book_snapshots(symbol: str, day_utc: str) -> pd.DataFrame:
     return pd.DataFrame(snaps)
 
 
+def iter_days(start_ymd: str, end_ymd: str) -> list[str]:
+    s = datetime.strptime(start_ymd, "%Y-%m-%d").date()
+    e = datetime.strptime(end_ymd, "%Y-%m-%d").date()
+    if e < s:
+        raise ValueError("end date must be >= start date")
+    out = []
+    d = s
+    while d <= e:
+        out.append(d.isoformat())
+        d += timedelta(days=1)
+    return out
+
+
+
 def main() -> None:
-    ensure_dirs()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--symbol", default="BTCUSDT")
+    parser.add_argument("--start", default="2024-01-01", help="UTC start date YYYY-MM-DD (inclusive)")
+    parser.add_argument("--end", default="2024-01-01", help="UTC end date YYYY-MM-DD (inclusive)")
+    args = parser.parse_args()
+
+    sym = args.symbol
+    days = iter_days(args.start, args.end)
 
     out_dir = PATHS.data_raw / "project1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    sym = SYMBOL
-    day = DAY_UTC
+    for day in days:
+        # skip if already downloaded (either aggTrades or bars fallback)
+        raw_bars_path = out_dir / f"{sym.lower()}_{day}_bars_1s.parquet"
+        raw_trades_path = out_dir / f"{sym.lower()}_{day}_trades.parquet"
+        raw_meta_path = out_dir / f"{sym.lower()}_{day}_meta.json"
 
-    print(f"Downloading aggTrades: symbol={sym} day_utc={day}")
-    try:
-        trades = download_agg_trades(sym, day)
-    except RuntimeError as e:
-        if str(e) == "BINANCE_BLOCKED_451":
-            print("Binance API blocked (HTTP 451). Using free fallback: 1-second bars.")
-            trades = download_fallback_1s_bars(sym, day)
-        else:
-            raise
+        if raw_meta_path.exists() and (raw_bars_path.exists() or raw_trades_path.exists()):
+            print(f"SKIP existing: {day}")
+            continue
 
-    print(f"aggTrades rows: {len(trades):,}")
+        print(f"Downloading aggTrades: symbol={sym} day_utc={day}")
+    
+        try:
+            trades = download_agg_trades(sym, day)
+        except RuntimeError as e:
+            if str(e) == "BINANCE_BLOCKED_451":
+                print("Binance API blocked (HTTP 451). Using free fallback: 1-second bars.")
+                trades = download_fallback_1s_bars(sym, day)
+            else:
+                raise
 
-    kind = "trades" if "price" in trades.columns and "qty" in trades.columns else "bars_1s"
-    trades_path = out_dir / f"{sym.lower()}_{day}_{kind}.parquet"
+        print(f"aggTrades rows: {len(trades):,}")
 
-    trades.to_parquet(trades_path, index=False)
-    print(f"Wrote: {trades_path}")
+        kind = "trades" if "price" in trades.columns and "qty" in trades.columns else "bars_1s"
+        trades_path = out_dir / f"{sym.lower()}_{day}_{kind}.parquet"
 
-    book = pd.DataFrame()
-    print("Order book snapshots skipped in fallback mode.")
+        trades.to_parquet(trades_path, index=False)
+        print(f"Wrote: {trades_path}")
+
+        book = pd.DataFrame()
+        print("Order book snapshots skipped in fallback mode.")
 
 
-    meta = {
-        "symbol": sym,
-        "day_utc": day,
-        "trades_rows": int(len(trades)),
-        "book_rows": int(len(book)),
-        "depth_limit": int(DEPTH_LIMIT),
-        "snapshot_interval_sec": int(SNAPSHOT_INTERVAL_SEC),
-        "paths": {k: str(v) for k, v in asdict(PATHS).items()},
-    }
-    meta_path = out_dir / f"{sym.lower()}_{day}_meta.json"
-    meta_path.write_text(pd.Series(meta).to_json())
-    print(f"Wrote: {meta_path}")
+        meta = {
+            "symbol": sym,
+            "day_utc": day,
+            "trades_rows": int(len(trades)),
+            "book_rows": int(len(book)),
+            "depth_limit": int(DEPTH_LIMIT),
+            "snapshot_interval_sec": int(SNAPSHOT_INTERVAL_SEC),
+            "paths": {k: str(v) for k, v in asdict(PATHS).items()},
+        }
+        meta_path = out_dir / f"{sym.lower()}_{day}_meta.json"
+        meta_path.write_text(pd.Series(meta).to_json())
+        print(f"Wrote: {meta_path}")
 
 
 if __name__ == "__main__":
